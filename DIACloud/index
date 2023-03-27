@@ -1,0 +1,450 @@
+<!DOCTYPE HTML>
+<html lang="en">
+    <header>
+        <meta charset="utf-8"/>
+        <title>DIACloud API Document</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link href="./css/bootstrap.css" rel="stylesheet"/>
+        <link href="./css/public.css" rel="stylesheet"/>
+        <script src="./js/jquery-1.11.2.min.js"></script>
+        <script src="./js/bootstrap.js"></script>
+        <script src="./js/cookie.js"></script>
+        <script>
+            <!--base64-->
+            function Base64() {
+
+                // private property
+                _keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+
+                // public method for encoding
+                this.encode = function (input) {
+                    var output = "";
+                    var chr1, chr2, chr3, enc1, enc2, enc3, enc4;
+                    var i = 0;
+                    input = _utf8_encode(input);
+                    while (i < input.length) {
+                        chr1 = input.charCodeAt(i++);
+                        chr2 = input.charCodeAt(i++);
+                        chr3 = input.charCodeAt(i++);
+                        enc1 = chr1 >> 2;
+                        enc2 = ((chr1 & 3) << 4) | (chr2 >> 4);
+                        enc3 = ((chr2 & 15) << 2) | (chr3 >> 6);
+                        enc4 = chr3 & 63;
+                        if (isNaN(chr2)) {
+                            enc3 = enc4 = 64;
+                        } else if (isNaN(chr3)) {
+                            enc4 = 64;
+                        }
+                        output = output +
+                        _keyStr.charAt(enc1) + _keyStr.charAt(enc2) +
+                        _keyStr.charAt(enc3) + _keyStr.charAt(enc4);
+                    }
+                    return output;
+                }
+
+
+                // private method for UTF-8 encoding
+                _utf8_encode = function (string) {
+                    string = string.replace(/\r\n/g,"\n");
+                    var utftext = "";
+                    for (var n = 0; n < string.length; n++) {
+                        var c = string.charCodeAt(n);
+                        if (c < 128) {
+                            utftext += String.fromCharCode(c);
+                        } else if((c > 127) && (c < 2048)) {
+                            utftext += String.fromCharCode((c >> 6) | 192);
+                            utftext += String.fromCharCode((c & 63) | 128);
+                        } else {
+                            utftext += String.fromCharCode((c >> 12) | 224);
+                            utftext += String.fromCharCode(((c >> 6) & 63) | 128);
+                            utftext += String.fromCharCode((c & 63) | 128);
+                        }
+
+                    }
+                    return utftext;
+                }
+
+            }
+
+            //init
+            $(document).ready(function(){
+                $.get('./js/apiSpecification.json').success(function(rsp){
+                    window.apiSpecification = rsp;
+                    $("#custom_a li").on("click", function(){
+                        $("#custom_a ").find(".active").removeClass("active");
+                        $(this).addClass("active");
+                       var host = 'https://api.diacloudsolutions.com';
+ //                        var host = 'https://localhost';
+                        var url = $(this)[0].innerText;
+                        url = host + url.slice(url.indexOf('/'));
+                        $('input[name=url]').val(url);
+
+                        $('#request_header').hide();
+                        $('#request_query_string').hide();
+                        var request_methos = $(this).find('span')[0].innerText;
+                        $("#request-method-selector").val(request_methos);
+                        if(request_methos !='GET'){
+                            $('#request-post-data').show();
+                        }
+                        request_methos !='GET' ?  $('#request-post-data').show() : $('#request-post-data').hide();
+                        $('#takesTime').empty().append('<pre>...ms</pre>');
+                        $('#response').empty().append('<pre>...</pre>');
+                        //fill the api instructions
+                        var api_key = $(this).find('a').attr('api-key');
+                        $('div[name=api_instruction]').empty();
+                        $('div[name=api_instruction]').append(apiSpecification[api_key]);
+                        //query string
+                        $("#request_query_string").empty().append(
+                                '<span style="background-color: #ccc;">query string</span>'
+                                + '<div onclick="insertKeyValRow();" class="keyvalueeditor-row keyvalueeditor-last" style="margin-top: 10px;">'
+                                + '<input readonly class="insert_new_row"  type="text"  placeholder="URL Parameter Key" >'
+                                + '<input readonly class="insert_new_row row_value"  type="text"  placeholder="Value" >'
+                                + '</div>'
+                        );
+                    });
+
+                    $("#custom_a li:first").click();
+                });
+
+                $('#request_header').hide();
+                $('#request_query_string').hide();
+                $('#request-post-data').hide();
+                //get cookies
+                if(WebUtil.readCookie('username')){
+                    $('input[name=username]').val(WebUtil.readCookie('username'));
+                    $('input[name=password]').val(WebUtil.readCookie('password'));
+                    refreshHeader(WebUtil.readCookie('username'),WebUtil.readCookie('password'));
+                    $('#request_header').hide();
+                }
+
+            });
+            //add authorization header
+            function refreshHeader(username, password){
+                WebUtil.eraseCookie('username');
+                WebUtil.eraseCookie('password');
+                WebUtil.createCookie('username', username,7);
+                WebUtil.createCookie('password', password,7);
+                var tok = username + ':' + password;
+                var insBase64 = new Base64();
+                var hash = insBase64.encode(tok);
+                var auth = "Basic " + hash;
+                var str = '<div  style="margin-top: 10px;" name="authorization">'+
+                        '<input class="insert_new_row"  type="text" value="Authorization" >  '+
+                        '<input class="insert_new_row row_value" name="base_auth" type="text" placeholder="Value" value="'+auth+'">'+
+                        '</div>';
+                if($('#request_header').find('div[name=authorization]')){
+                    $('#request_header').find('div[name=authorization]').remove();
+                    $('#request_header').append(str);
+                }else{
+                    $('#request_header').append(str);
+                }
+                $('#request_header').show();
+            }
+            //send ajax requet
+            function sendRequest(){
+                $('#takesTime').empty().append('<pre>...ms</pre>');
+                $('#response').empty().append('<pre>...</pre>');
+                var url = $('input[name=url]').val();
+                var request_method = $('#request-method-selector').val();
+                var callStart, callEnd;
+                //IE Date object has no Date.now() method
+                if(window.ActiveXObject){
+                    callStart = (new Date()).getTime();
+                }else{
+                    callStart = Date.now();
+                }
+
+                var auth = $('input[name=base_auth]').val();
+                if(url.indexOf('{') !== -1){
+                    alert('Please replace the variable in { } with the correct value!');
+                    return;
+                }
+                var data = '';
+                if(request_method != 'GET'){
+                    data = $('#request-post-data').find('textarea').val();
+                    if(data != '') {
+                        try{
+                            jQuery.parseJSON(data)
+                        }catch (e){
+                            alert('Your request data should be a valid JSON object!');
+                            return;
+                        }
+                    }
+                }
+
+                $.ajax({
+                    url: url,
+                    type: request_method,
+                    data: data,
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization", auth);
+                        xhr.setRequestHeader("Accept", 'application/json');
+                        xhr.setRequestHeader("Content-Type", 'application/json');
+                        xhr.setRequestHeader("Access-Control-Allow-Origin", '1');
+                    },
+                    success: function(rsp,textStatus, xhr){
+                        var callEnd;
+                        if(window.ActiveXObject){
+                            callEnd = (new Date()).getTime();
+                        }else{
+                            callEnd = Date.now();
+                        }
+                        var takesTime = '<pre class="excute-success-color">'+(callEnd - callStart) + ' ms</pre>';
+                        var jsonStr = JSON.stringify(rsp, null, '\t');
+
+                        var html = '<pre>' + jsonStr + '</pre>';
+                        if(request_method !='GET'){
+                            html = '<pre>' + xhr.status + " " + xhr.statusText +'</pre>';
+                        }
+                        $('#response').empty().append(html);
+                        $('#response').find('pre').addClass('excute-success-color');
+                        $('#takesTime').empty().append(takesTime);
+                    },
+                    error: function(rsp){
+                        var callEnd;
+                        //IE Date object has no Date.now() method
+                        if(window.ActiveXObject){
+                            callEnd = (new Date()).getTime();
+                        }else{
+                            callEnd = Date.now();
+                        }
+                        var takesTime = '<pre class="excute-success-color">'+(callEnd - callStart) + ' ms</pre>';
+                        $('#response').empty().append('<pre>'+rsp.status + ' ' + rsp.statusText + '</pre>');
+                        $('#response').find('pre').addClass('excute-error-color');
+                        $('#takesTime').empty().append(takesTime);
+                        $('#takesTime').find('pre').addClass('excute-error-color');
+                    }
+                });
+            }
+            //private function
+            function _createInputKeyVal(){
+                return str = '<div   style="margin-top: 10px;" name="authorization">'+
+                '<input onkeyup="keyup(this);" class="insert_new_row"  type="text" placeholder="Key" value="" >  '+
+                '<input onkeyup="keyup(this);" class="insert_new_row row_value" name="base_auth" type="text" placeholder="Value" value="">'+
+                ' <a onclick="delete_present_row(this);"><img  src="image/delete.png"></a>'+
+                '</div>';
+            }
+            function insertKeyValRow(){
+                var container = $('#request_query_string');
+                var divNum = container.find('div').length;
+                var divEle = container.find(".keyvalueeditor-last");
+                divEle.removeClass('keyvalueeditor-last"');
+                var inputs = divEle.prev().find('input');
+                for(i=0; i<inputs.length; i++){
+                    if(divNum !=1 && $(inputs[i]).val() == ""){
+                        return;
+                    }
+                }
+
+                $(_createInputKeyVal()).insertBefore(divEle);
+
+            }
+
+            //when keyup , count the query string in the url
+            function keyup(thisObj){
+
+                // if inputs's value not null in the  div container, update the url
+                var divs = $(thisObj).parent().parent();
+                var query_string = "";
+                var divs = divs.find('div');
+                for(var i=0; i<divs.length; i++){
+                    var inputs = $(divs[i]).find('input');
+                    if($(inputs[0]).val() != "" && $(inputs[1]).val() != "" ){
+                        query_string += "&" + $(inputs[0]).val() + "=" + $(inputs[1]).val();
+                    }
+                }
+                query_string = query_string.slice(query_string.indexOf("&")+1);
+                if(query_string){
+                    query_string = "?"+query_string;
+                }
+                var url = $('input[name=url]').val();
+                urlNew = (url.indexOf("?") == '-1') ? url+query_string : url.slice(0, url.indexOf("?")) + query_string;
+                $('input[name=url]').val(urlNew);
+            }
+
+            function delete_present_row(thisObj){
+                $(thisObj).parent().remove();
+                var inputs = $(thisObj).parent().find('input');
+                var query_string = "";
+                if($(inputs[0]).val() != "" && $(inputs[1]).val() != "" ){
+                    query_string += $(inputs[0]).val() + "=" + $(inputs[1]).val();
+                }
+                var urlNew = $('input[name=url]').val().replace(query_string, '');
+                $('input[name=url]').val(urlNew);
+            }
+
+
+/**
+ * the onkeyup event on the url input element , to update the query string
+ *
+ */
+            function _createInputKeyValRow(key, val){
+                return str ='<div   style="margin-top: 10px;" name="authorization">'+
+                '<input onkeyup="keyup(this);" class="insert_new_row"  type="text" placeholder="Key" value="'+key+'" >  '+
+                '<input onkeyup="keyup(this);" class="insert_new_row row_value" name="base_auth" type="text" placeholder="Value" value="'+val+'">'+
+                ' <a onclick="delete_present_row(this);"><img  src="image/delete.png"></a>'+
+                '</div>';
+            }
+
+            function refreshQueryStr(thisObj){
+                var url = $(thisObj).val();
+                var query_string = (url.indexOf("?") != '-1') ?  url.slice(url.indexOf("?")+1) : "";
+                if(query_string){
+                    var queryArray = query_string.split("&");
+                    var queryKeyValElements = '';
+                    for(var i = 0; i<queryArray.length; i++){
+                        queryArray[i] = queryArray[i].split("=");
+                        switch(queryArray[i].length){
+                            case 0:
+                                queryKeyValElements += _createInputKeyValRow("", "");
+                                break;
+                            case 1:
+                                queryKeyValElements += _createInputKeyValRow(queryArray[i][0], "");
+                                break;
+                            case 2:
+                                queryKeyValElements += _createInputKeyValRow(queryArray[i][0], queryArray[i][1]);
+                                break;
+                        }
+                    }
+                    //then update the query string parameters key-value input element
+                    $("#request_query_string").empty().append(
+                            '<span style="background-color: #ccc;">query string</span>'
+                            + queryKeyValElements
+                            + '<div onclick="insertKeyValRow();" class="keyvalueeditor-row keyvalueeditor-last" style="margin-top: 10px;">'
+                            + '<input readonly class="insert_new_row"  type="text"  placeholder="URL Parameter Key" >'
+                            + '<input readonly class="insert_new_row row_value"  type="text"  placeholder="Value" >'
+                            + '</div>'
+                    );
+                }
+            }
+
+        </script>
+    </header>
+    <body>
+        <div id="sidebar" >
+            <div class="text-center" style="border-bottom:  1px solid #ccc;">
+                <h3 >Restful API List</h3>
+            </div>
+            <div id="custom_a">
+                <ul class="nav ">
+                    <li><a api-key="getDevices"><span class="res_label">GET</span>/devices</a></li>
+                    <li><a api-key="getAlarms"><span class="res_label">GET</span>/alarms</a></li>
+                    <li><a api-key="getAlarmsOfSpecifiedDevice"><span class="res_label">GET</span>/devices/<b>{device_id}</b>/alarms </a></li>
+                    <li><a api-key="getVlns"><span class="res_label">GET</span>/vlns</a></li>
+                    <li><a api-key="getCustomRegsOfSpecifiedDevice"><span class="res_label">GET</span>/devices/<b>{device_id}</b>/regs </a></li>
+                    <li><a api-key="insertRegsOfSpecifiecDevice"><span class="res_label">put</span>/devices/<b>{device_id}</b>/regs </a></li>
+                    <li><a api-key="getRegsHistoryOfSpecifiecDevice"><span class="res_label">get</span>/devices/<b>{device_id}</b>/regshistory?regs=2048 </a></li>
+                    <li><a api-key="getRegHistoryOfSpecifiecDevice"><span class="res_label">get</span>/devices/<b>{device_id}</b>/regs/<b>{reg_addr}</b>/history </a></li>
+                    <li><a api-key="deleteRegsOfSpecifiecDevice"><span class="res_label">delete</span> /devices/<b>{device_id}</b>/regs/<b>{reg_addr}</b></a></li>
+                    
+                    <li><a api-key="v2/getAlarms"><span class="res_label">GET</span>/v2/alarms</a></li>
+                    <li><a api-key="v2/getAlarmsOfSpecifiedDevice"><span class="res_label">GET</span>/v2/devices/<b>{device_id}</b>/alarms
+                        </a></li>
+                    <li><a api-key="v2/getCustomRegsOfSpecifiedDevice"><span class="res_label">GET</span>/v2/devices/<b>{device_id}</b>/regs
+                        </a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div id="content">
+
+            <section class="request">
+                <div style=" border: 1px solid green; padding: 14px 12px;">
+                    <!-- Nav tabs -->
+                    <ul class="nav nav-tabs" role="tablist">
+                        <li role="presentation" class="active"><a href="#home" aria-controls="home" role="tab" data-toggle="tab">Instructions</a></li>
+                        <li role="presentation"><a href="#profile" aria-controls="profile" role="tab" data-toggle="tab">Basic Auth</a></li>
+                    </ul>
+                    <!-- Tab panes -->
+                    <div class="tab-content">
+                        <div role="tabpanel" class="tab-pane active" name="api_instruction" id="home"></div>
+                        <div role="tabpanel2" class="tab-pane " id="profile">
+                            <div >
+                                <form id="auth_form">
+                                    <div class="form-group">
+                                        <input type="text" class="form-control" style="width: 300px;" name="username" placeholder="user name">
+                                    </div>
+                                    <div class="form-group">
+                                        <input type="password" class="form-control" style="width: 300px;" name="password" placeholder="Password">
+                                    </div>
+                                    <a  onclick="refreshHeader($('input[name=username]').val(), $('input[name=password]').val());" class="btn btn-default">Refresh headers</a>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <!--Tab panels end-->
+                </div>
+                <!--request url-->
+                <div style="height: 50px; margin-top: 10px; border: 1px solid purple;padding:2px;">
+                    <div style="width: 50%;float: left;">
+                        <input onkeyup="refreshQueryStr(this);" type="text" name="url" class="input-text-light" style="border:none;"  placeholder="Enter quest URL here"/>
+                    </div>
+                    <div style="float:left;margin-top: 10px;margin-left: 5px;">
+                        <select id="request-method-selector">
+                            <option value="GET" selected="">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                        </select>
+                    </div>
+                    <div style="float: left; margin-left: 10px;">
+                        <button class="btn btn-primary" onclick="sendRequest();">send</button>
+                        <button class="btn btn-default" onclick="$('#request_header').toggle();">Headers</button>
+                        <button class="btn btn-default" onclick="$('#request_query_string').toggle();">URL params</button>
+                        <button class="btn btn-default" onclick="$('#request-post-data').toggle();">Post data</button>
+                    </div>
+                </div>
+                <!--request parameters-->
+                <div id="request-parameters" style="height: auto; margin-top: 10px; border: 1px solid blue;padding:12px 10px;">
+                    <!--request header-->
+                    <div id="request_header" style="margin-top: 2px; border-top: 1px dashed #ccc;">
+                        <span style="background-color: #ccc;">request headers</span>
+                        <div class="keyvalueeditor-row" name="Accept" style="margin-top: 10px;">
+                            <input class="insert_new_row"  type="text" value="Accept"  placeholder="URL Parameter Key" >
+                            <input class="insert_new_row row_value" type="text" value="application/json" placeholder="Value" >
+                        </div>
+                        <div class="keyvalueeditor-row" name="contenttype" style="margin-top: 10px;">
+                            <input class="insert_new_row"  type="text" value="Content-Type"  placeholder="URL Parameter Key" >
+                            <input class="insert_new_row row_value" type="text" value="application/json" placeholder="Value" >
+                        </div>
+                    </div>
+                    <!--request query string-->
+                    <div id="request_query_string" style="margin-top: 2px; border-top: 1px dashed #ccc;">
+                        <span style="background-color: #ccc;">query string</span>
+                        <div onclick="insertKeyValRow();" class="keyvalueeditor-row keyvalueeditor-last" style="margin-top: 10px;">
+                            <input readonly class="insert_new_row"  type="text"  placeholder="URL Parameter Key" >
+                            <input readonly class="insert_new_row row_value"  type="text"  placeholder="Value" >
+                        </div>
+                    </div>
+                    <!--request post data-->
+                    <div id="request-post-data" style="margin-top: 2px; border-top: 1px dashed #ccc;">
+                        <span style="background-color: #ccc;">post data</span><span>(Please input valid JSON object)</span>
+                        <div class="keyvalueeditor-row" style="margin-top: 10px;">
+                            <textarea style="width: 600px; height: 150px;"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="request-query-string">
+
+                </div>
+            </section>
+            <!--request end-->
+            <!--response begin-->
+            <section class="response">
+                <div style="padding: 2px;">
+                    <div class=" ">
+                        <div class="col-md-1"><b>Takes:</b></div>
+                        <div class="col-md-11" id="takesTime"><pre>...ms</pre></div>
+                    </div>
+                    <!--The API response begin-->
+                    <div class=" ">
+                        <div class="col-md-1"><b>Result:</b></div>
+                        <div id="response"  class="col-md-11"><pre>...</pre></div>
+                    </div>
+                </div>
+            </section>
+            <!--response end -->
+        </div>
+    </body>
+</html>
